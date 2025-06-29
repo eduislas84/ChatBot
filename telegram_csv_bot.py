@@ -6,8 +6,8 @@ from groq import Groq
 import io
 import contextlib
 
-TELEGRAM_TOKEN = "7970488624:AAFI3l8abnIvgMlyda9C5mSwmuScaHjkjaY"
-GROQ_API_KEY = "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"
+TELEGRAM_TOKEN = ""
+GROQ_API_KEY = ""
 
 groq_client = Groq(api_key=GROQ_API_KEY)
 
