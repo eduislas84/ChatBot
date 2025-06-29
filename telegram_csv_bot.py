@@ -206,8 +206,6 @@ class DataFrameManager:
             self.remove_user(oldest_user)
 
 class SecureTelegramBot:
-    """Bot de Telegram seguro y optimizado"""
-    
     def __init__(self):
         self.groq_client = Groq(api_key=GROQ_API_KEY)
         self.data_manager = DataFrameManager()
@@ -215,6 +213,7 @@ class SecureTelegramBot:
         self.rate_limiter = RateLimiter(RATE_LIMIT_REQUESTS, RATE_LIMIT_WINDOW)
         self.executor = ThreadPoolExecutor(max_workers=4)
         self.operation_executor = SafeOperationExecutor()
+        self.last_suggested_code = {}
     
     async def _check_authorization(self, update: Update) -> bool:
         """Verifica autorización del usuario"""
@@ -474,12 +473,13 @@ class SecureTelegramBot:
             
             respuesta = await self._get_ai_response_async(df, pregunta)
             
-            # Guardar en cache
+            # Guardar en cache y en last_suggested_code
             self.query_cache.set(df.shape, pregunta, respuesta)
+            self.last_suggested_code[user_id] = respuesta  # Guardar el último código
             
             message = (
                 f"💡 Código sugerido:\n```python\n{respuesta}\n```\n\n"
-                f"Usa /ejecutar {respuesta} para ejecutarlo"
+                f"Usa /ejecutar para ejecutarlo o /ejecutar [otro_código] para otro análisis"
             )
             
             await progress_msg.edit_text(message, parse_mode="Markdown")
@@ -487,7 +487,7 @@ class SecureTelegramBot:
         except Exception as e:
             logger.error(f"Error generando respuesta para usuario {user_id}: {e}")
             await update.message.reply_text(f"❌ Error al procesar pregunta: {str(e)}")
-    
+
     async def ejecutar(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Comando /ejecutar - Ejecuta código pandas de forma segura"""
         if not await self._check_authorization(update) or not await self._check_rate_limit(update):
@@ -500,16 +500,20 @@ class SecureTelegramBot:
             await update.message.reply_text("📁 Primero necesitas subir un archivo CSV")
             return
         
-        # Obtener el código del comando
+        # Obtener el código - si no hay argumentos, usar el último sugerido
         if not context.args:
-            await update.message.reply_text(
-                "❗ Uso: /ejecutar [código]\n\n"
-                "Ejemplo: /ejecutar df.shape\n"
-                "Ejemplo: /ejecutar df['columna'].mean()"
-            )
-            return
-        
-        codigo = " ".join(context.args)
+            if user_id in self.last_suggested_code:
+                codigo = self.last_suggested_code[user_id]
+            else:
+                await update.message.reply_text(
+                    "❗ No hay código sugerido reciente. Primero haz una pregunta o usa:\n"
+                    "/ejecutar [código]\n\n"
+                    "Ejemplo: /ejecutar df.shape\n"
+                    "Ejemplo: /ejecutar df['columna'].mean()"
+                )
+                return
+        else:
+            codigo = " ".join(context.args)
         
         try:
             # Validar que el código sea seguro
